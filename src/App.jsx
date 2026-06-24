@@ -109,11 +109,9 @@ function Editor() {
   const [copyMsg, setCopyMsg] = useState('');
   const [manualEdit, setManualEdit] = useState(false);
   const [headerText, setHeaderText] = useState('');
-  const [titleText, setTitleText] = useState('');
   const [headerDirty, setHeaderDirty] = useState(false);
   const [manualText, setManualText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmDeleteGuide, setConfirmDeleteGuide] = useState(false);
   const [sessionCost, setSessionCost] = useState(0);
   const [lastEditInfo, setLastEditInfo] = useState(null);
   const [aiActivity, setAiActivity] = useState([]);
@@ -382,94 +380,23 @@ Example of a correct response:
     setManualText('');
   }
 
-  // Load the active guide's header (and title) into the editor when Setup is opened.
+  // Load the active guide's header into the editor when Setup is opened.
   function openHeaderEditor() {
     setHeaderText(guide?.header ?? '');
-    setTitleText(guide?.title ?? '');
     setHeaderDirty(false);
   }
 
   // Re-parse the edited header so the derived name (and the dropdown) update,
-  // then persist the header AND the RegisterGuide() title onto the active guide.
+  // then persist it onto the active guide.
   function saveHeader() {
     if (!guide) return;
-    const newTitle = titleText.trim();
     // Re-extract the #name from the edited header.
     const nameMatch = headerText.match(/^\s*#name\s+(.+?)\s*$/m);
-    const newName = nameMatch ? nameMatch[1].trim() : (newTitle || null);
-    const updated = { ...guide, header: headerText, name: newName, title: newTitle || null };
+    const newName = nameMatch ? nameMatch[1].trim() : guide.title;
+    const updated = { ...guide, header: headerText, name: newName };
     setGuide(updated);
     setGuides(prev => prev.map((g, i) => (i === activeGuideIndex ? updated : g)));
     setHeaderDirty(false);
-  }
-
-  // ─── Sub-guide management ───────────────────────────────────────────────
-  // Append a brand new, blank sub-guide (RegisterGuide block) to the end of
-  // the file and jump straight to its Setup screen so it can be named.
-  function addGuide() {
-    const updatedGuides = guides.map((g, i) => (i === activeGuideIndex ? guide : g));
-    const updatedApplied = { ...appliedByGuide, [activeGuideIndex]: appliedSteps };
-
-    const newGuide = {
-      title: 'New Sub-Guide',
-      name: 'New Sub-Guide',
-      header: '#name New Sub-Guide\n',
-      rawHeader: '#name New Sub-Guide\n',
-      steps: [{ id: 0, raw: '>>New step -- edit me\n', label: 'New step', type: 'other' }],
-    };
-    const newIndex = updatedGuides.length;
-
-    setGuides([...updatedGuides, newGuide]);
-    setSegments([...segments, { type: 'text', text: '\n\n' }, { type: 'guide', guideIndex: newIndex }]);
-    setAppliedByGuide(updatedApplied);
-    setActiveGuideIndex(newIndex);
-    setGuide(newGuide);
-    setAppliedSteps({});
-    setSelectedStepId('header');
-    setHeaderText(newGuide.header);
-    setTitleText(newGuide.title);
-    setHeaderDirty(false);
-    setStatus('idle');
-    setProposedStep(null);
-    setManualEdit(false);
-    setSearch('');
-  }
-
-  // Remove the active sub-guide entirely (its RegisterGuide block and steps),
-  // re-keying segments and appliedByGuide so the remaining guides line up.
-  function deleteGuide() {
-    if (guides.length <= 1) return;
-    const updatedGuides = guides.map((g, i) => (i === activeGuideIndex ? guide : g));
-    const removedIndex = activeGuideIndex;
-    const newGuides = updatedGuides.filter((_, i) => i !== removedIndex);
-
-    const newSegments = segments
-      .filter(seg => !(seg.type === 'guide' && seg.guideIndex === removedIndex))
-      .map(seg => (seg.type === 'guide' && seg.guideIndex > removedIndex
-        ? { ...seg, guideIndex: seg.guideIndex - 1 }
-        : seg));
-
-    const newApplied = {};
-    Object.entries(appliedByGuide).forEach(([k, v]) => {
-      const idx = Number(k);
-      if (idx === removedIndex) return;
-      newApplied[idx > removedIndex ? idx - 1 : idx] = v;
-    });
-
-    const nextIndex = Math.min(removedIndex, newGuides.length - 1);
-    const nextGuide = newGuides[nextIndex];
-    setGuides(newGuides);
-    setSegments(newSegments);
-    setAppliedByGuide(newApplied);
-    setActiveGuideIndex(nextIndex);
-    setGuide(nextGuide);
-    setAppliedSteps(newApplied[nextIndex] || {});
-    setSelectedStepId(nextGuide?.steps[0]?.id ?? null);
-    setConfirmDeleteGuide(false);
-    setStatus('idle');
-    setProposedStep(null);
-    setManualEdit(false);
-    setSearch('');
   }
 
   function deleteStep() {
@@ -1239,7 +1166,7 @@ Example of a correct response:
                   (#name, #next, faction/class tags) that sits before step 1. */}
               <div
                 className={`step-item setup-item ${selectedStepId === 'header' ? 'active' : ''}`}
-                onClick={() => { setSelectedStepId('header'); setHeaderText(guide?.header ?? ''); setTitleText(guide?.title ?? ''); setHeaderDirty(false); setStatus('idle'); setProposedStep(null); setManualEdit(false); setConfirmDelete(false); setConfirmDeleteGuide(false); }}
+                onClick={() => { setSelectedStepId('header'); setHeaderText(guide?.header ?? ''); setHeaderDirty(false); setStatus('idle'); setProposedStep(null); setManualEdit(false); setConfirmDelete(false); }}
               >
                 <div className="step-num">⚙ Setup</div>
                 <div className="step-label">Guide name, faction & section links</div>
@@ -1289,40 +1216,9 @@ Example of a correct response:
                   <span className="step-title">⚙ Guide Setup</span>
                   <span style={{ fontSize: 11, color: '#666' }}>The config block before step 1</span>
                 </div>
-                <div className="step-toolbar">
-                  <button className="tool-btn primary" onClick={addGuide} title="Append a new, blank sub-guide to this file">
-                    + New sub-guide
-                  </button>
-                  <div style={{ flex: 1 }} />
-                  {confirmDeleteGuide ? (
-                    <>
-                      <span style={{ fontSize: 11, color: '#e06060' }}>Delete this sub-guide and all its steps?</span>
-                      <button className="tool-btn danger" onClick={deleteGuide}>Yes, delete</button>
-                      <button className="tool-btn" onClick={() => setConfirmDeleteGuide(false)}>Cancel</button>
-                    </>
-                  ) : (
-                    <button className="tool-btn danger" disabled={guides.length <= 1}
-                      onClick={() => setConfirmDeleteGuide(true)}
-                      title={guides.length <= 1 ? "Can't delete the only guide in this file" : "Delete this sub-guide"}>
-                      🗑 Delete sub-guide
-                    </button>
-                  )}
-                </div>
                 <div className="content-area" style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div className="edit-label" style={{ marginBottom: 4 }}>Guide title</div>
-                  <input
-                    value={titleText}
-                    onChange={e => { setTitleText(e.target.value); setHeaderDirty(true); }}
-                    placeholder="e.g. Kamisayo Speedrun 1-14"
-                    style={{
-                      background: '#1a1508', border: '1px solid #2a2010', color: '#e8d8a0',
-                      borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none',
-                      marginBottom: 12, fontFamily: 'system-ui, sans-serif',
-                    }}
-                  />
                   <div style={{ fontSize: 12, color: '#8a7e60', marginBottom: 8, lineHeight: 1.5 }}>
-                    The title above is the literal name passed to <code style={{ color: '#9ccf7a' }}>RegisterGuide(…)</code> for
-                    <b style={{ color: '#c9963a' }}> this sub-guide</b>. The header below is its config block. Common tags:&nbsp;
+                    This is the header for <b style={{ color: '#c9963a' }}>this sub-guide</b>. Common tags:&nbsp;
                     <code style={{ color: '#9ccf7a' }}>#name</code> (shown in the dropdown),&nbsp;
                     <code style={{ color: '#9ccf7a' }}>#next</code> (the section that follows),&nbsp;
                     and class/faction lines like <code style={{ color: '#9ccf7a' }}>&lt;&lt; Rogue</code> or <code style={{ color: '#9ccf7a' }}>&lt;&lt;Alliance</code>.
@@ -1340,7 +1236,7 @@ Example of a correct response:
                     {headerDirty ? '✓ Save setup' : 'Saved'}
                   </button>
                   <button className="tool-btn" disabled={!headerDirty}
-                    onClick={() => { setHeaderText(guide?.header ?? ''); setTitleText(guide?.title ?? ''); setHeaderDirty(false); }}>
+                    onClick={() => { setHeaderText(guide?.header ?? ''); setHeaderDirty(false); }}>
                     ✕ Revert
                   </button>
                   <span style={{ fontSize: 11, color: '#444', marginLeft: 4 }}>
