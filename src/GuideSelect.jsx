@@ -49,12 +49,19 @@ export function GuideName({ str, iconSize = 14 }) {
 }
 
 // Custom dropdown that shows guide names with rendered icons + step counts.
-export function GuideSelect({ guides, activeIndex, editsFor, onSelect }) {
+// Also hosts sub-guide management: a "+ New sub-guide" row at the bottom,
+// and a small delete icon per row (with an inline confirm step) — this is
+// the one place that lists every sub-guide, so it's the natural home for
+// adding/removing them too.
+export function GuideSelect({ guides, activeIndex, editsFor, onSelect, onAdd, onDelete, fileName }) {
   const [open, setOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
   const ref = useRef(null);
 
   useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setPendingDelete(null); }
+    }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
@@ -64,7 +71,8 @@ export function GuideSelect({ guides, activeIndex, editsFor, onSelect }) {
 
   return (
     <div className="guide-dd" ref={ref}>
-      <button className="guide-dd-btn" onClick={() => setOpen(o => !o)} title="Switch sub-guide">
+      <button className="guide-dd-btn" onClick={() => setOpen(o => !o)}
+        title={fileName ? `${fileName} — switch or manage sub-guides` : "Switch or manage sub-guides"}>
         <GuideName str={label(active)} />
         <span className="guide-dd-meta">· {active.steps.length} steps</span>
         <span className="guide-dd-caret">{open ? "▲" : "▼"}</span>
@@ -73,20 +81,41 @@ export function GuideSelect({ guides, activeIndex, editsFor, onSelect }) {
         <div className="guide-dd-menu">
           {guides.map((g, i) => {
             const edits = editsFor(i);
+            const confirming = pendingDelete === i;
             return (
               <div
                 key={i}
                 className={"guide-dd-row" + (i === activeIndex ? " active" : "")}
-                onClick={() => { onSelect(i); setOpen(false); }}
+                onClick={() => { if (!confirming) { onSelect(i); setOpen(false); } }}
               >
                 <GuideName str={label(g)} />
                 <span className="guide-dd-meta">
                   {edits > 0 ? <span className="guide-dd-edits">✎{edits}</span> : null}
                   · {g.steps.length} steps
                 </span>
+                {confirming ? (
+                  <span className="guide-dd-confirm" onClick={e => e.stopPropagation()}>
+                    <button className="guide-dd-icon-btn guide-dd-confirm-yes" title="Confirm delete"
+                      onClick={() => { onDelete(i); setPendingDelete(null); }}>✓</button>
+                    <button className="guide-dd-icon-btn" title="Cancel"
+                      onClick={() => setPendingDelete(null)}>✕</button>
+                  </span>
+                ) : (
+                  <button
+                    className="guide-dd-icon-btn"
+                    disabled={guides.length <= 1}
+                    title={guides.length <= 1 ? "Can't delete the only guide in this file" : "Delete this sub-guide"}
+                    onClick={e => { e.stopPropagation(); setPendingDelete(i); }}
+                  >
+                    🗑
+                  </button>
+                )}
               </div>
             );
           })}
+          <div className="guide-dd-add" onClick={() => { onAdd(); setOpen(false); }}>
+            + New sub-guide
+          </div>
         </div>
       )}
     </div>
