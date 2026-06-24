@@ -49,11 +49,12 @@ export function GuideName({ str, iconSize = 14 }) {
 }
 
 // Custom dropdown that shows guide names with rendered icons + step counts.
-// Also hosts sub-guide management: a "+ New sub-guide" row at the bottom,
-// and a small delete icon per row (with an inline confirm step) — this is
-// the one place that lists every sub-guide, so it's the natural home for
-// adding/removing them too.
-export function GuideSelect({ guides, activeIndex, editsFor, onSelect, onAdd, onDelete, fileName }) {
+// Also hosts sub-guide management: a small delete icon per row (with an
+// inline confirm step), and two footer actions — "+ New sub-guide" and
+// "Edit main guide title" (the RegisterGuide() title for guides[0], the
+// one title RXP actually shows players) — since this is the one place
+// that already lists every sub-guide.
+export function GuideSelect({ guides, activeIndex, editsFor, onSelect, onAdd, onDelete, onEditTitle, fileName }) {
   const [open, setOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const ref = useRef(null);
@@ -115,6 +116,9 @@ export function GuideSelect({ guides, activeIndex, editsFor, onSelect, onAdd, on
           })}
           <div className="guide-dd-add" onClick={() => { onAdd(); setOpen(false); }}>
             + New sub-guide
+          </div>
+          <div className="guide-dd-add" onClick={() => { onEditTitle(); setOpen(false); }}>
+            ✎ Edit main guide title
           </div>
         </div>
       )}

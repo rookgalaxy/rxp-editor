@@ -1,7 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import SKILL_FILE from "./skill.js";
 import { runAiEdit } from "./ai-tools.js";
-import { GuideSelect } from "./GuideSelect.jsx";
+import { GuideSelect, GuideName } from "./GuideSelect.jsx";
 import { HelpModal } from "./HelpModal.jsx";
 import GameData from "./gamedata.js";
 import MentionPicker from "./MentionPicker.jsx";
@@ -109,8 +109,9 @@ function Editor() {
   const [copyMsg, setCopyMsg] = useState('');
   const [manualEdit, setManualEdit] = useState(false);
   const [headerText, setHeaderText] = useState('');
-  const [titleText, setTitleText] = useState('');
   const [headerDirty, setHeaderDirty] = useState(false);
+  const [mainTitleOpen, setMainTitleOpen] = useState(false);
+  const [mainTitleDraft, setMainTitleDraft] = useState('');
   const [manualText, setManualText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sessionCost, setSessionCost] = useState(0);
@@ -123,6 +124,13 @@ function Editor() {
   const fileInputRef = useRef(null);
   const listRef = useRef(null);
   const textareaRef = useRef(null);
+
+  useEffect(() => {
+    if (!mainTitleOpen) return;
+    function onKey(e) { if (e.key === 'Escape') setMainTitleOpen(false); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mainTitleOpen]);
 
   const selectedStep = guide?.steps.find(s => s.id === selectedStepId);
   const currentRaw = selectedStep
@@ -381,25 +389,48 @@ Example of a correct response:
     setManualText('');
   }
 
-  // Load the active guide's header (and title) into the editor when Setup is opened.
+  // Load the active guide's header into the editor when Setup is opened.
   function openHeaderEditor() {
     setHeaderText(guide?.header ?? '');
-    setTitleText(guide?.title ?? '');
     setHeaderDirty(false);
   }
 
   // Re-parse the edited header so the derived name (and the dropdown) update,
-  // then persist the header AND the RegisterGuide() title onto the active guide.
+  // then persist it onto the active guide.
   function saveHeader() {
     if (!guide) return;
-    const newTitle = titleText.trim();
     // Re-extract the #name from the edited header.
     const nameMatch = headerText.match(/^\s*#name\s+(.+?)\s*$/m);
-    const newName = nameMatch ? nameMatch[1].trim() : (newTitle || null);
-    const updated = { ...guide, header: headerText, name: newName, title: newTitle || null };
+    const newName = nameMatch ? nameMatch[1].trim() : guide.title;
+    const updated = { ...guide, header: headerText, name: newName };
     setGuide(updated);
     setGuides(prev => prev.map((g, i) => (i === activeGuideIndex ? updated : g)));
     setHeaderDirty(false);
+  }
+
+  // Edit the "main guide" title — the literal text RegisterGuide() takes for
+  // the FIRST sub-guide in the file (the text before the very first "[[").
+  // This is intentionally singular and file-level, unlike the per-sub-guide
+  // #name tag: only the first guide's title is what RXP/players ever see as
+  // the guide's name in the in-game list.
+  function openMainTitleModal() {
+    const first = activeGuideIndex === 0 ? guide : guides[0];
+    setMainTitleDraft(first?.title ?? '');
+    setMainTitleOpen(true);
+  }
+
+  function saveMainTitle() {
+    const trimmed = mainTitleDraft.replace(/\s*\n+\s*/g, ' ').trim();
+    const first = activeGuideIndex === 0 ? guide : guides[0];
+    if (!first) return;
+    // If there's no explicit #name tag, the dropdown label falls back to the
+    // title — keep it in sync so renaming here also updates the dropdown.
+    const nameMatch = first.header.match(/^\s*#name\s+(.+?)\s*$/m);
+    const newName = nameMatch ? first.name : (trimmed || null);
+    const updatedFirst = { ...first, title: trimmed || null, name: newName };
+    if (activeGuideIndex === 0) setGuide(updatedFirst);
+    setGuides(prev => prev.map((g, i) => (i === 0 ? updatedFirst : g)));
+    setMainTitleOpen(false);
   }
 
   // ─── Sub-guide management (create / delete, both driven from the guide
@@ -427,7 +458,6 @@ Example of a correct response:
     setAppliedSteps({});
     setSelectedStepId('header');
     setHeaderText(newGuide.header);
-    setTitleText(newGuide.title);
     setHeaderDirty(false);
     setStatus('idle');
     setProposedStep(null);
@@ -962,6 +992,9 @@ Example of a correct response:
         .help-body h3 { color: #c9963a; font-size: 13px; margin: 0 0 5px; font-weight: 600; }
         .help-body p { color: #b8ac90; font-size: 12.5px; line-height: 1.55; margin: 0 0 4px; }
         .help-body code { color: #9ccf7a; font-size: 11.5px; background: #1a1610; padding: 0 3px; border-radius: 3px; }
+        .title-input { background: #1a1508; border: 1px solid #2a2010; color: #e8d8a0; border-radius: 6px; padding: 8px 10px; font-size: 13px; outline: none; resize: none; font-family: system-ui, sans-serif; height: 38px; white-space: pre; overflow-x: auto; overflow-y: hidden; }
+        .title-input:focus { border-color: #c9963a; }
+        .title-preview { background: #0c0a06; border: 1px solid #2a2010; border-radius: 6px; padding: 8px 10px; min-height: 18px; font-size: 13px; color: #e8d8a0; margin-top: 4px; display: flex; align-items: center; }
         .help-triggers { list-style: none; padding: 0; margin: 6px 0; }
         .help-triggers li { color: #b8ac90; font-size: 12px; line-height: 1.7; }
         .help-triggers span { display: inline-block; width: 18px; font-weight: 700; font-family: monospace; }
@@ -1149,6 +1182,7 @@ Example of a correct response:
             onSelect={selectGuide}
             onAdd={addGuide}
             onDelete={deleteGuideAt}
+            onEditTitle={openMainTitleModal}
             fileName={fileName}
           />
           {guides.length > 1 && (
@@ -1252,7 +1286,7 @@ Example of a correct response:
                   (#name, #next, faction/class tags) that sits before step 1. */}
               <div
                 className={`step-item setup-item ${selectedStepId === 'header' ? 'active' : ''}`}
-                onClick={() => { setSelectedStepId('header'); setHeaderText(guide?.header ?? ''); setTitleText(guide?.title ?? ''); setHeaderDirty(false); setStatus('idle'); setProposedStep(null); setManualEdit(false); setConfirmDelete(false); }}
+                onClick={() => { setSelectedStepId('header'); setHeaderText(guide?.header ?? ''); setHeaderDirty(false); setStatus('idle'); setProposedStep(null); setManualEdit(false); setConfirmDelete(false); }}
               >
                 <div className="step-num">⚙ Setup</div>
                 <div className="step-label">Guide name, faction & section links</div>
@@ -1303,20 +1337,8 @@ Example of a correct response:
                   <span style={{ fontSize: 11, color: '#666' }}>The config block before step 1</span>
                 </div>
                 <div className="content-area" style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div className="edit-label" style={{ marginBottom: 4 }}>Guide title</div>
-                  <input
-                    value={titleText}
-                    onChange={e => { setTitleText(e.target.value); setHeaderDirty(true); }}
-                    placeholder="e.g. Kamisayo Speedrun 1-14"
-                    style={{
-                      background: '#1a1508', border: '1px solid #2a2010', color: '#e8d8a0',
-                      borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none',
-                      marginBottom: 12, fontFamily: 'system-ui, sans-serif',
-                    }}
-                  />
                   <div style={{ fontSize: 12, color: '#8a7e60', marginBottom: 8, lineHeight: 1.5 }}>
-                    The title above is the literal name passed to <code style={{ color: '#9ccf7a' }}>RegisterGuide(…)</code> for
-                    <b style={{ color: '#c9963a' }}> this sub-guide</b>. The header below is its config block. Common tags:&nbsp;
+                    This is the header for <b style={{ color: '#c9963a' }}>this sub-guide</b>. Common tags:&nbsp;
                     <code style={{ color: '#9ccf7a' }}>#name</code> (shown in the dropdown),&nbsp;
                     <code style={{ color: '#9ccf7a' }}>#next</code> (the section that follows),&nbsp;
                     and class/faction lines like <code style={{ color: '#9ccf7a' }}>&lt;&lt; Rogue</code> or <code style={{ color: '#9ccf7a' }}>&lt;&lt;Alliance</code>.
@@ -1334,7 +1356,7 @@ Example of a correct response:
                     {headerDirty ? '✓ Save setup' : 'Saved'}
                   </button>
                   <button className="tool-btn" disabled={!headerDirty}
-                    onClick={() => { setHeaderText(guide?.header ?? ''); setTitleText(guide?.title ?? ''); setHeaderDirty(false); }}>
+                    onClick={() => { setHeaderText(guide?.header ?? ''); setHeaderDirty(false); }}>
                     ✕ Revert
                   </button>
                   <span style={{ fontSize: 11, color: '#444', marginLeft: 4 }}>
@@ -1532,6 +1554,45 @@ Example of a correct response:
         <span style={{ color: '#9ccf7a' }}> Kamisayo Speedruns</span> server ·
         <button className="footer-help-link" onClick={() => setHelpOpen(true)}>Help &amp; FAQ</button>
       </div>
+      {mainTitleOpen && (
+        <div className="help-overlay" onClick={() => setMainTitleOpen(false)}>
+          <div className="help-modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+            <div className="help-head">
+              <span className="help-title">Edit Main Guide Title</span>
+              <button className="help-close" onClick={() => setMainTitleOpen(false)}>✕</button>
+            </div>
+            <div className="help-body">
+              <p>
+                The text passed to <code>RegisterGuide(…)</code> for the first sub-guide
+                in this file — the name RXP shows for this guide in-game.
+              </p>
+              <MentionPicker
+                className="title-input"
+                style={{ flex: 'none', minHeight: 0 }}
+                value={mainTitleDraft}
+                onChange={val => setMainTitleDraft(val.replace(/\n/g, ''))}
+                spellCheck={false}
+                autoFocus
+              />
+              <div style={{ fontSize: 11, color: '#5a523f', marginTop: 6 }}>
+                Type <b style={{ color: '#d0c060' }}>*</b> to search and insert an icon.
+              </div>
+              <div style={{ fontSize: 10, color: '#5a523f', marginTop: 16, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Preview
+              </div>
+              <div className="title-preview">
+                {mainTitleDraft.trim()
+                  ? <GuideName str={mainTitleDraft} iconSize={16} />
+                  : <span style={{ color: '#444' }}>(empty)</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button className="tool-btn primary" onClick={saveMainTitle}>✓ Save title</button>
+                <button className="tool-btn" onClick={() => setMainTitleOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
